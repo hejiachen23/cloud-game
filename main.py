@@ -1,3 +1,5 @@
+# Author : hejiachen23 a.k.a. 锕系元素镤
+# LICENSE : GPL 3.0
 import pygame
 import sys
 from typing import *
@@ -5,7 +7,7 @@ from functools import lru_cache
 
 pygame.init()
 screen = pygame.display.set_mode((720,780))
-pygame.display.set_caption("联机游戏-中国象棋 作者:锕系元素镤")
+pygame.display.set_caption("联机游戏-中国象棋")
 
 running = True
 pieces_name = {"红":["帅","士","相","馬","炮","車","兵"],"黑":["将","士","象","馬","炮","車","卒"]}
