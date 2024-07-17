@@ -1,23 +1,29 @@
-# Author : hejiachen23 a.k.a. 锕系元素镤
-# LICENSE : GPL 3.0
 import pygame
 import sys
 from typing import *
 from functools import lru_cache
+import time
+from XesCloud import *
 
 pygame.init()
 screen = pygame.display.set_mode((720,780))
-pygame.display.set_caption("联机游戏-中国象棋")
+pygame.display.set_caption("联机游戏-中国象棋 作者:锕系元素镤")
 
 running = True
 pieces_name = {"红":["帅","士","相","馬","炮","車","兵"],"黑":["将","士","象","馬","炮","車","卒"]}
 pieces_image = {"红":[],"黑":[]}
 piece_width = 60
+project_id  = 24788982
+background = pygame.transform.scale(pygame.image.load("./Image/bg.jpeg"),(1241,700)).subsurface(pygame.Rect(134,0,632,700)).copy()
+cloud = XesCloud("data",project_id)
 for piece in pieces_name["红"]:
     pieces_image["红"].append(pygame.transform.scale(pygame.image.load(f"./Image/红-{piece}.png"),(piece_width,piece_width)))
 for piece in pieces_name["黑"]:
     pieces_image["黑"].append(pygame.transform.scale(pygame.image.load(f"./Image/黑-{piece}.png"),(piece_width,piece_width)))
-background = pygame.transform.scale(pygame.image.load("./Image/棋盘.png"),(632,720))
+chess_board = pygame.transform.scale(pygame.image.load("./Image/棋盘.png"),(632,720))
+chess_board.set_alpha(128)
+eat_image = pygame.transform.scale(pygame.image.load("./Image/吃.png"),(200,200))
+jiang_image = pygame.transform.scale(pygame.image.load("./Image/将.png"),(200,200))
 pygame.display.update()
 
 class Piece:
@@ -32,11 +38,22 @@ class Piece:
             self.name = pieces_name["黑"][self.mode]
             self.image = pieces_image["黑"][self.mode]
         self.mask = pygame.mask.from_surface(self.image)
+        self.selected = False
 
     def show(self) -> None:
         pos_x = 55
         pos_y = 30
-        screen.blit(self.image,(pos_x+self.pos[0]*77-piece_width//2,pos_y+self.pos[1]*77-piece_width//2))
+        if not self.selected:
+            screen.blit(self.image,(pos_x+self.pos[0]*77-piece_width//2,pos_y+self.pos[1]*77-piece_width//2))
+        else:
+            tmp = pygame.Surface((82,82))
+            tmp.fill((255,255,255))
+            tmp.set_colorkey((255,255,255))
+            pygame.draw.circle(tmp,(0,0,0),(41,41),41)
+            tmp.set_alpha(128)
+            screen.blit(tmp,(pos_x+self.pos[0]*77-30,pos_y+self.pos[1]*77-30))
+            screen.blit(pygame.transform.scale(self.image,(80,80)),(pos_x+self.pos[0]*77-40,pos_y+self.pos[1]*77-40))
+            self.selected = False
     
     # @lru_cache
     def get_route(self) -> List[Tuple[int,int]]:
@@ -83,11 +100,13 @@ class Piece:
             if self.team == 0:
                 for i in routes:
                     if self.is_in_area(i,(0,5,8,9)) and self.is_not_team_piece(i):
-                        res.append(i)
+                        if not chess_map[(i[1]-self.pos[1])//2 + self.pos[1]][(i[0]-self.pos[0])//2+self.pos[0]]:
+                            res.append(i)
             else:
                 for i in routes:
                     if self.is_in_area(i,(0,0,8,4)) and self.is_not_team_piece(i):
-                        res.append(i)
+                        if not chess_map[(i[1]-self.pos[1])//2 + self.pos[1]][(i[0]-self.pos[0])//2+self.pos[0]]:
+                            res.append(i)
             return res
         
         # 马
@@ -231,6 +250,7 @@ class Piece:
     
     def show_route(self) -> None:
         global route_surface,route_mask
+        self.selected = True
         route_mask,route_surface = [],[]
         routes = self.get_route()
         draw()
@@ -277,8 +297,33 @@ class Piece:
         chess_map[pos[1]][pos[0]] = self
         self.pos = pos[0],pos[1]
         route_surface,route_mask = [],[]
+        teams = (red_pieces[:0]+red_pieces[5:],black_pieces[:0]+black_pieces[5:])
+        jiang = False
         draw()
+        for i in teams[self.team]:
+            if general[(self.team+1)%2].pos in i.get_route():
+                jiang = True
+        for i in teams[(self.team+1)%2]:
+            if general[self.team].pos in i.get_route():
+                jiang = True
+        if target or jiang:
+            tmp = screen.subsurface(pygame.Rect(screen.get_width()//2-100,screen.get_height()//2-100,200,200)).copy()
+            screen.blit(eat_image,(screen.get_width()//2-100,screen.get_height()//2-100))
+            alpha = 255
+            for _ in range(51):
+                alpha -= 5
+                screen.blit(tmp,(screen.get_width()//2-100,screen.get_height()//2-100))
+                if not jiang:
+                    eat_image.set_alpha(alpha)
+                    screen.blit(eat_image,(screen.get_width()//2-100,screen.get_height()//2-100))
+                else:
+                    jiang_image.set_alpha(alpha)
+                    screen.blit(jiang_image,(screen.get_width()//2-100,screen.get_height()//2-100))
+                pygame.display.update()
+                time.sleep(0.02)
+            pygame.display.update()
         rounds += 1
+        
     
     @staticmethod
     def get_column(column):
@@ -338,6 +383,7 @@ general = (red_pieces[0],black_pieces[0])
 def draw():
     screen.fill((255,255,255))
     screen.blit(background,(44,20))
+    screen.blit(chess_board,(44,20))
     for i in chess_map:
         for j in i:
             if j:
