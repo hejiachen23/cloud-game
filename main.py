@@ -1,9 +1,10 @@
 import pygame
-import sys
+from os import _exit
 from typing import *
 from functools import lru_cache
 import time
 from XesCloud import *
+from threading import Thread
 
 pygame.init()
 screen = pygame.display.set_mode((720,780))
@@ -14,14 +15,21 @@ pieces_name = {"红":["帅","士","相","馬","炮","車","兵"],"黑":["将","�
 pieces_image = {"红":[],"黑":[]}
 piece_width = 60
 project_id  = 24788982
-background = pygame.transform.scale(pygame.image.load("./Image/bg.jpeg"),(1241,700)).subsurface(pygame.Rect(134,0,632,700)).copy()
+background = pygame.transform.scale(pygame.image.load("./Image/bg2.jpeg"),(1241,700)).subsurface(pygame.Rect(134,0,632,700)).copy()
+# background = pygame.transform.scale(pygame.image.load("./Image/bg.jpeg"),(632,720)).copy()
+black_border = pygame.transform.scale(pygame.image.load("./Image/黑框.png"),(70,70))
+black_border.set_colorkey((255,255,255))
+red_border = pygame.transform.scale(pygame.image.load("./Image/红框.png"),(70,70))
+red_border.set_colorkey((255,255,255))
 cloud = XesCloud("data",project_id)
+uid = getID()
 for piece in pieces_name["红"]:
     pieces_image["红"].append(pygame.transform.scale(pygame.image.load(f"./Image/红-{piece}.png"),(piece_width,piece_width)))
 for piece in pieces_name["黑"]:
     pieces_image["黑"].append(pygame.transform.scale(pygame.image.load(f"./Image/黑-{piece}.png"),(piece_width,piece_width)))
 chess_board = pygame.transform.scale(pygame.image.load("./Image/棋盘.png"),(632,720))
 chess_board.set_alpha(128)
+chess_board_background = pygame.image.load("./Image/棋盘背景.jpeg")
 eat_image = pygame.transform.scale(pygame.image.load("./Image/吃.png"),(200,200))
 jiang_image = pygame.transform.scale(pygame.image.load("./Image/将.png"),(200,200))
 pygame.display.update()
@@ -282,24 +290,33 @@ class Piece:
     def move(self,pos:Tuple[int,int]) -> None:
         global chess_map,route_mask,route_surface,rounds
         target = chess_map[pos[1]][pos[0]]
-        if target:
-            if target in red_pieces:
-                red_pieces.remove(target)
-                if target.mode == 0:
-                    print("黑方胜利")
-                    sys.exit()
-            else:
-                black_pieces.remove(target)
-                if target.mode == 0:
-                    print("红方胜利")
-                    sys.exit()
+        _pos = self.pos        
         chess_map[self.pos[1]][self.pos[0]] = None
         chess_map[pos[1]][pos[0]] = self
         self.pos = pos[0],pos[1]
         route_surface,route_mask = [],[]
         teams = (red_pieces[:0]+red_pieces[5:],black_pieces[:0]+black_pieces[5:])
         jiang = False
-        draw()
+        draw((_pos,self.pos,self.team))
+        if target:
+            if target in red_pieces:
+                red_pieces.remove(target)
+                if target.mode == 0:
+                    if team == self.team:
+                        cloud.write(dump(self.pos,target.pos),cloud_uid)
+                    screen.blit(pygame.font.SysFont("kaiti",80).render("黑方胜利",True,(0,0,0)),(360-80*2,390-80))
+                    pygame.display.update()
+                    time.sleep(3)
+                    _exit(0)
+            else:
+                black_pieces.remove(target)
+                if target.mode == 0:
+                    if team == self.team:
+                        cloud.write(dump(self.pos,target.pos),cloud_uid)
+                    screen.blit(pygame.font.SysFont("kaiti",80).render("红方胜利",True,(0,0,0)),(360-80*2,390-80))
+                    pygame.display.update()
+                    time.sleep(3)
+                    _exit(0)
         for i in teams[self.team]:
             if general[(self.team+1)%2].pos in i.get_route():
                 jiang = True
@@ -321,8 +338,7 @@ class Piece:
                     screen.blit(jiang_image,(screen.get_width()//2-100,screen.get_height()//2-100))
                 pygame.display.update()
                 time.sleep(0.02)
-            pygame.display.update()
-        rounds += 1
+        # rounds += 1
         
     
     @staticmethod
@@ -336,6 +352,14 @@ class Piece:
     @staticmethod
     def get_real_pos(x:int,y:int,size:Tuple[int,int]) -> Tuple[int,int]:
         return 55+x*77-size[0]//2,30+y*77-size[1]//2
+
+@lru_cache
+def int2pos(pos:int) -> Tuple[int,int]:
+    return (pos%9,pos//9)
+
+@lru_cache
+def pos2int(pos:Tuple[int,int]) -> int:
+    return pos[0]+pos[1]*9
 
 chess_map = [
     [ 5, 3, 2, 1, 0, 1, 2, 3, 5],
@@ -380,19 +404,69 @@ route_mask = []
 route_surface = []
 general = (red_pieces[0],black_pieces[0])
 
-def draw():
-    screen.fill((255,255,255))
-    screen.blit(background,(44,20))
+def draw(mark:Union[Tuple[Tuple[int,int],Tuple[int,int],int]] = None):
+    screen.blit(chess_board_background,(0,0))
+    # screen.blit(background,(44,20))
     screen.blit(chess_board,(44,20))
     for i in chess_map:
         for j in i:
             if j:
                 j.show()
+    if mark:
+        if mark[2]:
+            screen.blit(black_border,Piece.get_real_pos(mark[0][0],mark[0][1],(70,70)))
+            screen.blit(black_border,Piece.get_real_pos(mark[1][0],mark[1][1],(70,70)))
+        else:
+            screen.blit(red_border,Piece.get_real_pos(mark[0][0],mark[0][1],(70,70)))
+            screen.blit(red_border,Piece.get_real_pos(mark[1][0],mark[1][1],(70,70)))
     pygame.display.update()
 
 draw()
 rounds = 0
 flag = False
+writeflag = False
+
+def dump(old_pos,new_pos):
+    old = str(pos2int(old_pos))
+    new = str(pos2int(new_pos))
+    return int(f"{len(old)}{old}{len(new)}{new}")
+
+def load(data):
+    lst = []
+    x = str(data)
+    while x:
+        i = x[0]
+        lst.append(int2pos(int(x[1:int(i)+1])))
+        x = x[int(i)+1:]
+    return tuple(lst)
+
+def online(enemy_uid):
+    global writeflag,epos,estep,team,rounds,cloud_uid
+    cloud_uid = max(enemy_uid,uid)
+    cloud.write(114514,cloud_uid)
+    last = 114514
+    if cloud_uid == uid:
+        team = 0
+    else:
+        team = 1
+    while True:
+        if rounds %2 == team:
+            if writeflag:
+                cloud.write(dump(opos,ostep),cloud_uid)
+                last = dump(opos,ostep)
+                writeflag = False
+                rounds += 1
+        else:
+            tmp = cloud.read(cloud_uid)
+            if last != tmp:
+                epos,estep = load(tmp)
+                last = tmp
+                chess_map[epos[1]][epos[0]].move(estep)
+                rounds += 1
+        time.sleep(0.3) # 服务器累了，让服务器喝口水吧（）
+
+thread = Thread(target=lambda:online(11513))
+thread.start()
 
 while running:
     for event in pygame.event.get():
@@ -400,17 +474,8 @@ while running:
             pygame.quit()
             running = False
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if rounds%2 == 0:
-                for i in red_pieces:
-                    if i.is_clicked(event.pos):
-                        if not flag:
-                            i.show_route()
-                            flag = True
-                        else:
-                            draw()
-                            flag = False
-            else:
-                for i in black_pieces:
+            if rounds%2 == team:
+                for i in (red_pieces,black_pieces)[team]:
                     if i.is_clicked(event.pos):
                         if not flag:
                             i.show_route()
@@ -423,6 +488,10 @@ while running:
                 r_pos = Piece.get_real_pos(routes[i][0],routes[i][1],(20,20))
                 if 0 <= event.pos[0] - r_pos[0]  < 20 and 0 <= event.pos[1] - r_pos[1] < 20:
                     if j[0].get_at((event.pos[0] - r_pos[0], event.pos[1] - r_pos[1])):
+                        opos = j[1].pos
                         j[1].move(routes[i])
+                        ostep = routes[i]
+                        writeflag = True
                         flag = False
                         break
+_exit(0)
